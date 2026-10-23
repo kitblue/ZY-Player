@@ -8,6 +8,29 @@ require('@electron/remote/main').initialize()
 
 const isDevelopment = process.env.NODE_ENV !== 'production'
 
+// 绿色版（便携模式）：exe 同级存在 portable 目录时，用户数据写入程序目录，不污染系统
+function setupPortableUserData () {
+  if (isDevelopment) return
+  const path = require('path')
+  const fs = require('fs')
+  const exeDir = path.dirname(app.getPath('exe'))
+  let baseDir = process.env.PORTABLE_EXECUTABLE_DIR || ''
+  if (!baseDir && fs.existsSync(path.join(exeDir, 'portable'))) baseDir = exeDir
+  if (!baseDir) return
+  const dataDir = path.join(baseDir, 'data')
+  try {
+    fs.mkdirSync(dataDir, { recursive: true })
+    app.setPath('userData', dataDir)
+    app.setPath('logs', path.join(dataDir, 'logs'))
+    app.setPath('crashDumps', path.join(dataDir, 'crashDumps'))
+    app.setPath('temp', path.join(dataDir, 'temp'))
+    console.log('[portable] user data dir:', dataDir)
+  } catch (err) {
+    console.error('[portable] setup failed:', err)
+  }
+}
+setupPortableUserData()
+
 // const log = require('electron-log') // 用于调试主程序
 
 app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors') // 允许跨域
