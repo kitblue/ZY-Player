@@ -57,6 +57,8 @@ jobs:
 
       - name: Build portable x64
         run: yarn electron:build --win --x64 --publish never
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
 
       - name: Verify artifact
         shell: pwsh
