@@ -1,0 +1,69 @@
+name: build-win-portable
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-win-portable.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Patch vue.config.js (win target -> portable)
+        shell: pwsh
+        run: |
+          @'
+          const fs = require('fs');
+          let c = fs.readFileSync('vue.config.js', 'utf8');
+          const before = c;
+          c = c.replace("target: 'nsis'", "target: 'portable', artifactName: 'ZY-Player-${version}-portable-windows-${arch}.${ext}'");
+          if (c === before) { console.error('PATCH FAILED: nsis target not found'); process.exit(1); }
+          fs.writeFileSync('vue.config.js', c);
+          console.log(c);
+          '@ | Set-Content -Path patch.js -Encoding utf8
+          node patch.js
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 900000
+
+      - name: Build portable x64
+        run: yarn electron:build --win --x64 --publish never
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          Get-ChildItem dist_electron -Recurse -Include *.exe | Format-Table FullName, Length
+          $exe = Get-ChildItem dist_electron -Recurse -Include *.exe | Where-Object { $_.Length -gt 30MB }
+          if (-not $exe) { Write-Error 'portable exe not found or too small'; exit 1 }
+          $exe | ForEach-Object { Copy-Item $_.FullName "dist_electron/$($_.Name)" -Force }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zy-player-portable-x64
+          path: dist_electron/*.exe
+          if-no-files-found: error
+
+      - name: Publish prerelease to fork
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: portable-v2.8.8
+          name: ZY Player 2.8.8 Portable x64 (self-built)
+          prerelease: true
+          fail_on_unmatched_files: true
+          body: |
+            Self-built Windows x64 **portable** build of ZY Player 2.8.8,
+            compiled from upstream Hunlongyu/ZY-Player on GitHub Actions.
+
+            - Electron 13 / no native modules
+            - Single-file portable exe, no installation required
+            - Upstream official installers: https://github.com/Hunlongyu/ZY-Player/releases
+          files: dist_electron/*.exe
