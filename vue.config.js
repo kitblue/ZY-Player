@@ -16,8 +16,15 @@ module.exports = {
         publish: [
           {
             provider: 'github',
-            owner: 'Hunlongyu',
+            owner: 'kitblue',
             repo: 'ZY-Player'
+          }
+        ],
+        // 绿色版：包内附带 portable 目录，程序检测到后将用户数据写入程序目录下的 data
+        extraFiles: [
+          {
+            from: 'build/portable',
+            to: 'portable'
           }
         ],
         mac: {
@@ -30,13 +37,11 @@ module.exports = {
         },
         win: {
           icon: 'build/icons/icon.ico',
-          target: 'nsis'
+          target: '7z',
+          artifactName: 'ZY-Player-${version}-win_${arch}-green.${ext}'
         },
         linux: {
           icon: 'build/icons/'
-        },
-        snap: {
-          publish: ['github']
         }
       }
     }
