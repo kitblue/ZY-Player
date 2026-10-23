@@ -1,0 +1,106 @@
+name: build-win-green
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-win-green.yml'
+      - 'src/background.js'
+      - 'vue.config.js'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+      NODE_OPTIONS: --openssl-legacy-provider
+      RELEASE_TAG: green-v2.8.8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Init UTF-8 console
+        shell: pwsh
+        run: |
+          chcp 65001 > $null
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $OutputEncoding = [System.Text.Encoding]::UTF8
+          Write-Host "console encoding: utf-8 (cp65001)"
+
+      - name: Rewrite stale registries in yarn.lock
+        shell: pwsh
+        run: |
+          chcp 65001 > $null
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $p = 'yarn.lock'
+          $raw = Get-Content $p -Raw
+          $raw = $raw -replace 'http://registry\.npm\.taobao\.org', 'https://registry.npmjs.org'
+          $raw = $raw -replace 'https://registry\.npm\.taobao\.org', 'https://registry.npmjs.org'
+          $raw = $raw -replace 'https://registry\.npmmirror\.com', 'https://registry.npmjs.org'
+          $raw = $raw -replace 'https://mirrors\.huaweicloud\.com/repository/npm', 'https://registry.npmjs.org'
+          $raw = $raw -replace 'https://repo\.huaweicloud\.com/repository/npm', 'https://registry.npmjs.org'
+          [System.IO.File]::WriteAllText((Resolve-Path $p), $raw, (New-Object System.Text.UTF8Encoding($false)))
+          Select-String -Path $p -Pattern 'taobao|npmmirror|huaweicloud' -SimpleMatch | Measure-Object | ForEach-Object { Write-Host "remaining stale hosts: $($_.Count)" }
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: |
+          chcp 65001 > $null
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          yarn config set registry https://registry.npmjs.org
+          yarn install --network-timeout 600000
+          yarn add core-js@3.37.1 --network-timeout 600000
+
+      - name: Build green 7z
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+        run: |
+          chcp 65001 > $null
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          yarn electron:build --win --x64
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          chcp 65001 > $null
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $f = Get-ChildItem dist_electron -Filter '*.7z' -Recurse | Select-Object -First 1
+          if (-not $f) { throw 'no 7z artifact produced' }
+          Write-Host ("artifact: {0}  {1:N1} MB" -f $f.Name, ($f.Length / 1MB))
+          "artifact_path=$($f.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "artifact_name=$($f.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zy-player-green
+          path: ${{ env.artifact_path }}
+          if-no-files-found: error
+
+      - name: Publish / replace release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ZY-Player v2.8.8 (Windows green portable)
+          body: |
+            Windows x64 绿色便携版，解压即用。
+
+            便携化：包内 `portable` 目录存在时，配置/缓存/播放记录写入程序目录下 `data`，
+            删除整个目录即彻底清除，不写 AppData、不改注册表。
+          prerelease: true
+          overwrite_files: true
+          files: ${{ env.artifact_path }}
+          fail_on_unmatched_files: true
