@@ -1,4 +1,4 @@
-name: build-win-portable
+name: build-win-green
 
 on:
   workflow_dispatch:
@@ -18,14 +18,14 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Patch vue.config.js (win target -> portable)
+      - name: Patch vue.config.js (win target -> 7z green)
         shell: pwsh
         run: |
           @'
           const fs = require('fs');
           let c = fs.readFileSync('vue.config.js', 'utf8');
           const before = c;
-          c = c.replace("target: 'nsis'", "target: 'portable', artifactName: 'ZY-Player-${version}-portable-windows-${arch}.${ext}'");
+          c = c.replace("target: 'nsis'", "target: '7z', artifactName: 'ZY-Player-${version}-win_${arch}-green.${ext}'");
           if (c === before) { console.error('PATCH FAILED: nsis target not found'); process.exit(1); }
           fs.writeFileSync('vue.config.js', c);
           console.log(c);
@@ -55,7 +55,7 @@ jobs:
       - name: Upgrade core-js (babel runtime needs newer modules)
         run: yarn add core-js@3.37.1 --network-timeout 900000
 
-      - name: Build portable x64
+      - name: Build green x64
         run: yarn electron:build --win --x64 --publish never
         env:
           NODE_OPTIONS: --openssl-legacy-provider
@@ -63,29 +63,28 @@ jobs:
       - name: Verify artifact
         shell: pwsh
         run: |
-          Get-ChildItem dist_electron -Recurse -Include *.exe | Format-Table FullName, Length
-          $exe = Get-ChildItem dist_electron -Recurse -Include *.exe | Where-Object { $_.Length -gt 30MB }
-          if (-not $exe) { Write-Error 'portable exe not found or too small'; exit 1 }
-          $exe | ForEach-Object { Copy-Item $_.FullName "dist_electron/$($_.Name)" -Force }
+          Get-ChildItem dist_electron -Include *.7z,*.exe -Recurse | Format-Table FullName, Length
+          $arc = Get-ChildItem dist_electron -Include *.7z -Recurse | Where-Object { $_.Length -gt 30MB }
+          if (-not $arc) { Write-Error 'green 7z not found or too small'; exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: zy-player-portable-x64
-          path: dist_electron/*.exe
+          name: zy-player-green-x64
+          path: dist_electron/*.7z
           if-no-files-found: error
 
       - name: Publish prerelease to fork
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: portable-v2.8.8
-          name: ZY Player 2.8.8 Portable x64 (self-built)
+          tag_name: green-v2.8.8
+          name: ZY Player 2.8.8 Green x64 (self-built)
           prerelease: true
           fail_on_unmatched_files: true
           body: |
-            Self-built Windows x64 **portable** build of ZY Player 2.8.8,
+            Self-built Windows x64 **green (portable, no install)** build of ZY Player 2.8.8,
             compiled from upstream Hunlongyu/ZY-Player on GitHub Actions.
 
-            - Electron 13 / no native modules
-            - Single-file portable exe, no installation required
+            - Extract the 7z and run ZY Player.exe directly, nothing to install
+            - Electron 13, no native modules
             - Upstream official installers: https://github.com/Hunlongyu/ZY-Player/releases
-          files: dist_electron/*.exe
+          files: dist_electron/*.7z
