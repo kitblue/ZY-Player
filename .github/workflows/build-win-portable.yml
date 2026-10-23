@@ -52,6 +52,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --network-timeout 900000
 
+      - name: Upgrade core-js (babel runtime needs newer modules)
+        run: yarn add core-js@3.37.1 --network-timeout 900000
+
       - name: Build portable x64
         run: yarn electron:build --win --x64 --publish never
 
