@@ -32,6 +32,23 @@ jobs:
           '@ | Set-Content -Path patch.js -Encoding utf8
           node patch.js
 
+      - name: Rewrite stale registry urls in yarn.lock
+        shell: pwsh
+        run: |
+          @'
+          const fs = require('fs');
+          let lock = fs.readFileSync('yarn.lock', 'utf8');
+          const before = lock;
+          lock = lock.replace(/https:\/\/registry\.npm\.taobao\.org\/(@[^\/]+\/[^\/]+|[^\/]+)\/download\/([^\s"]+\.tgz)/g, (m, name, file) => {
+            const base = name.startsWith('@') ? file.split('/').slice(-1)[0] : file;
+            return `https://registry.npmjs.org/${name}/-/${base}`;
+          });
+          lock = lock.replace(/https:\/\/mirrors\.huaweicloud\.com\/repository\/npm\//g, 'https://registry.npmjs.org/');
+          fs.writeFileSync('yarn.lock', lock);
+          console.log('yarn.lock rewritten:', before !== lock);
+          '@ | Set-Content -Path fix-lock.js -Encoding utf8
+          node fix-lock.js
+
       - name: Install dependencies
         run: yarn install --network-timeout 900000
 
